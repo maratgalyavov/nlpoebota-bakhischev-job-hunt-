@@ -1,0 +1,100 @@
+# HR Career Assistant (MVP)
+
+Implementation based on [`design_doc.md`](design_doc.md) and backend-first plan in [`plans/mvp_implementation_plan.md`](plans/mvp_implementation_plan.md).
+
+## What is implemented
+
+- FastAPI backend with interview, generation, matching, feedback, and health routes
+- SQLite persistence for users, sessions, interview answers, artifacts, and feedback
+- Mock LLM generation service (resume / cover letter / skill gaps)
+- Embedding service with deterministic mock mode and FAISS-based matching
+- Mock vacancies dataset and index build script
+- Telegram bot handlers for `/start`, `/a`, `/resume`, `/match`
+- Unit + integration tests
+
+## Quick start (local)
+
+1. Create env file:
+
+```bash
+cp .env.example .env
+```
+
+2. Install dependencies:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+3. Run tests:
+
+```bash
+python3 -m pytest -q
+```
+
+4. Build FAISS index from mock vacancies:
+
+```bash
+python3 scripts/build_index.py
+```
+
+5. Start API:
+
+```bash
+python3 -m uvicorn app.main:app --reload
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/healthz
+```
+
+## API examples
+
+Start interview:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/interview/start \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "telegram_username": "demo"}'
+```
+
+Answer question:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/interview/answer \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "answer_text": "Мой ответ"}'
+```
+
+Generate resume:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/generate/resume \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1}'
+```
+
+Match vacancies:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/match/vacancies \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "top_k": 5}'
+```
+
+## Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+API: `http://127.0.0.1:8000`
+
+## Notes
+
+- Current environment uses Python 3.9; code and type hints were adapted for compatibility.
+- For real production-like LLM and embeddings, disable mock flags in [`.env.example`](.env.example) and integrate actual providers in [`app/services/llm_service.py`](app/services/llm_service.py) and [`app/services/embedding_service.py`](app/services/embedding_service.py).
+

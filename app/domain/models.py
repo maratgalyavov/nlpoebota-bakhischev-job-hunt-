@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+INTERVIEW_QUESTIONS_RU = [
+    "Подробно расскажи про свой опыт работы (сколько лет / какие позиции / какой вклад)",
+    "Какими инструментами и технологиями ты владеешь?",
+    "Какое у тебя образование?",
+    "Какую роль ты ищешь?",
+    "Какая желаемая зарплата (в рублях, от)?",
+    "Какой формат работы предпочитаешь (remote / офис / гибрид)?",
+    "Какая занятость тебе подходит (полная / частичная)?",
+    "Какие основные личностные качества ты считаешь своими сильными сторонами?",
+]
+
+
+@dataclass
+class InterviewState:
+    user_id: int
+    session_id: int
+    stage: str
+    question_index: int
+    completed: bool
+
+
+@dataclass
+class UserProfile:
+    user_id: int
+    role: str
+    experience: str
+    education: str
+    skills: str
+    salary_expectation: str
+    preferred_location: str
+    employment_type: str
+    characteristics: str
+
+    def to_text(self) -> str:
+        return (
+            f"Роль: {self.role}. "
+            f"Опыт: {self.experience}. "
+            f"Навыки: {self.skills}. "
+            f"Образование: {self.education}. "
+            f"Ожидаемая зарплата: {self.salary_expectation}. "
+            f"Локация: {self.preferred_location}. "
+            f"Занятость: {self.employment_type}. "
+            f"Личностные качества: {self.characteristics}."
+        )
+
+
+@dataclass
+class Vacancy:
+    id: str
+    title: str
+    company: str
+    description: str
+    skills: list[str]
+    salary_from: int
+    salary_to: int
+    location: str
+    url: str
+    posted_date: str
+    active_flg: bool
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "Vacancy":
+        return cls(
+            id=str(payload["id"]),
+            title=payload["title"],
+            company=payload["company"],
+            description=payload["description"],
+            skills=payload.get("skills", []),
+            salary_from=int(payload.get("salary_from", 0)),
+            salary_to=int(payload.get("salary_to", 0)),
+            location=payload.get("location", ""),
+            url=payload.get("url", ""),
+            posted_date=payload.get("posted_date", ""),
+            active_flg=bool(payload.get("active_flg", True)),
+        )
+
+
+@dataclass
+class Recommendation:
+    vacancy_id: str
+    score: float
+

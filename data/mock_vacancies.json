@@ -1,0 +1,68 @@
+[
+  {
+    "id": "vac_001",
+    "title": "Python Developer",
+    "company": "TechCorp",
+    "description": "Разработка backend-сервисов на Python/FastAPI, работа с PostgreSQL, Docker, Git.",
+    "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Git"],
+    "salary_from": 180000,
+    "salary_to": 260000,
+    "location": "Москва / Hybrid",
+    "url": "https://example.com/vac_001",
+    "posted_date": "2026-03-01",
+    "active_flg": true
+  },
+  {
+    "id": "vac_002",
+    "title": "Data Analyst",
+    "company": "InsightLab",
+    "description": "SQL-аналитика, дашборды, A/B тесты, Python, визуализация в BI.",
+    "skills": ["SQL", "Python", "A/B", "BI", "Statistics"],
+    "salary_from": 140000,
+    "salary_to": 220000,
+    "location": "Remote",
+    "url": "https://example.com/vac_002",
+    "posted_date": "2026-03-05",
+    "active_flg": true
+  },
+  {
+    "id": "vac_003",
+    "title": "ML Engineer",
+    "company": "AI Forge",
+    "description": "Прод ML-моделей, feature pipelines, Python, PyTorch, Kubernetes.",
+    "skills": ["Python", "ML", "PyTorch", "Kubernetes", "MLOps"],
+    "salary_from": 220000,
+    "salary_to": 340000,
+    "location": "Санкт-Петербург / Remote",
+    "url": "https://example.com/vac_003",
+    "posted_date": "2026-03-11",
+    "active_flg": true
+  },
+  {
+    "id": "vac_004",
+    "title": "Junior Backend Developer",
+    "company": "StartIT",
+    "description": "Junior backend на Python, REST API, Git, базовое знание SQL.",
+    "skills": ["Python", "REST", "Git", "SQL"],
+    "salary_from": 90000,
+    "salary_to": 140000,
+    "location": "Казань / Office",
+    "url": "https://example.com/vac_004",
+    "posted_date": "2026-03-15",
+    "active_flg": true
+  },
+  {
+    "id": "vac_005",
+    "title": "Product Analyst",
+    "company": "MarketOne",
+    "description": "Продуктовая аналитика, SQL, Python, метрики, коммуникация с продуктовой командой.",
+    "skills": ["SQL", "Python", "Product analytics", "Communication"],
+    "salary_from": 160000,
+    "salary_to": 240000,
+    "location": "Москва / Remote",
+    "url": "https://example.com/vac_005",
+    "posted_date": "2026-03-18",
+    "active_flg": true
+  }
+]
+
