@@ -126,7 +126,7 @@ def _digits_from_ru_salary(text: str) -> list[int]:
     for p in parts:
         try:
             n = int(re.sub(r"\s+", "", p))
-        except:
+        except Exception as e:
             continue
         if n > 1000000:
             continue
