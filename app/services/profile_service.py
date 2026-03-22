@@ -6,7 +6,9 @@ from app.domain.models import UserProfile
 class ProfileService:
     @staticmethod
     def from_answers(user_id: int, answers: list[dict]) -> UserProfile:
-        get = lambda idx: (answers[idx]["answer_text"] if idx < len(answers) else "")
+        def get(idx: int) -> str:
+            return answers[idx]["answer_text"] if idx < len(answers) else ""
+
         return UserProfile(
             user_id=user_id,
             experience=get(0),
@@ -18,4 +20,3 @@ class ProfileService:
             employment_type=get(6),
             characteristics=get(7),
         )
-

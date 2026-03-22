@@ -36,4 +36,16 @@ def test_interview_to_resume_and_match_flow() -> None:
     matched = client.post("/v1/match/vacancies", json={"user_id": 1001, "top_k": 3})
     assert matched.status_code == 200
     assert "items" in matched.json()
+    items = matched.json()["items"]
+    assert len(items) > 0
+    assert "explainability" in items[0]
+    assert "reasons" in items[0]["explainability"]
 
+
+def test_metrics_endpoint_exposes_prometheus_payload() -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "hr_assistant_http_requests_total" in response.text

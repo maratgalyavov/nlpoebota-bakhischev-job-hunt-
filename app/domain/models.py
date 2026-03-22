@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 INTERVIEW_QUESTIONS_RU = [
     "Подробно расскажи про свой опыт работы (сколько лет / какие позиции / какой вклад)",
     "Какими инструментами и технологиями ты владеешь?",

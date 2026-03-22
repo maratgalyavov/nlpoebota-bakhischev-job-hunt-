@@ -84,6 +84,8 @@ curl -X POST http://127.0.0.1:8000/v1/match/vacancies \
   -d '{"user_id": 1, "top_k": 5}'
 ```
 
+Response now includes explainability per vacancy (`matched_skills`, `reasons`, `missing_skills_preview`) from [`/v1/match/vacancies`](app/api/routes_matching.py:45).
+
 ## Docker
 
 ```bash
@@ -92,6 +94,11 @@ docker compose up --build
 ```
 
 API: `http://127.0.0.1:8000`
+
+Monitoring stack:
+- Prometheus: `http://127.0.0.1:9090`
+- Grafana: `http://127.0.0.1:3000` (admin/admin)
+- Dashboard file: [`monitoring/grafana/dashboards/hr-assistant-overview.json`](monitoring/grafana/dashboards/hr-assistant-overview.json)
 
 ## Notes
 
@@ -125,4 +132,13 @@ python3 -m uvicorn app.main:app --reload
 
 Behavior details:
 - Device auto-detection is in [`LLMService._resolve_device()`](app/services/llm_service.py:30) and prefers MPS on macOS.
-- If local model load/generation fails, app falls back to mock output in [`LLMService._generate()`](app/services/llm_service.py:107).
+- If local model load/generation fails, app falls back to mock output in [`LLMService._generate()`](app/services/llm_service.py:196).
+
+## LLM structured output contracts
+
+LLM responses are validated against internal JSON contracts in [`LLMService._validate_contract()`](app/services/llm_service.py:129):
+- [`ResumeContract`](app/services/llm_service.py:25)
+- [`CoverLetterContract`](app/services/llm_service.py:34)
+- [`SkillGapsContract`](app/services/llm_service.py:46)
+
+This keeps generation deterministic and parse-safe even for local models.

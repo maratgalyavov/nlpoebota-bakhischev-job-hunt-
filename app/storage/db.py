@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
