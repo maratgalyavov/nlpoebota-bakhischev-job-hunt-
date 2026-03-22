@@ -13,6 +13,10 @@ class Settings:
     telegram_bot_token: str = getenv("TELEGRAM_BOT_TOKEN", "")
     llm_api_key: str = getenv("LLM_API_KEY", "")
     llm_model: str = getenv("LLM_MODEL", "Qwen3.5-Flash")
+    llm_provider: str = getenv("LLM_PROVIDER", "mock")
+    llm_device: str = getenv("LLM_DEVICE", "auto")
+    llm_max_new_tokens: int = int(getenv("LLM_MAX_NEW_TOKENS", "384"))
+    llm_temperature: float = float(getenv("LLM_TEMPERATURE", "0.2"))
 
     embedding_model: str = getenv(
         "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
@@ -26,4 +30,3 @@ class Settings:
 
 
 settings = Settings()
-

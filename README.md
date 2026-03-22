@@ -98,3 +98,31 @@ API: `http://127.0.0.1:8000`
 - Current environment uses Python 3.9; code and type hints were adapted for compatibility.
 - For real production-like LLM and embeddings, disable mock flags in [`.env.example`](.env.example) and integrate actual providers in [`app/services/llm_service.py`](app/services/llm_service.py) and [`app/services/embedding_service.py`](app/services/embedding_service.py).
 
+## Run a small local Qwen on Apple Silicon (MPS)
+
+The app now supports a local HuggingFace backend in [`LLMService._local_hf_generate()`](app/services/llm_service.py:67).
+
+Recommended models:
+- For 16GB RAM device: `Qwen/Qwen2.5-0.5B-Instruct`
+- For 48GB RAM device: `Qwen/Qwen2.5-1.5B-Instruct` (you can also try `Qwen/Qwen2.5-3B-Instruct`)
+
+Set these values in [`.env`](.env):
+
+```bash
+USE_MOCK_LLM=false
+LLM_PROVIDER=local_hf
+LLM_MODEL=Qwen/Qwen2.5-1.5B-Instruct
+LLM_DEVICE=auto
+LLM_MAX_NEW_TOKENS=384
+LLM_TEMPERATURE=0.2
+```
+
+Then run API normally:
+
+```bash
+python3 -m uvicorn app.main:app --reload
+```
+
+Behavior details:
+- Device auto-detection is in [`LLMService._resolve_device()`](app/services/llm_service.py:30) and prefers MPS on macOS.
+- If local model load/generation fails, app falls back to mock output in [`LLMService._generate()`](app/services/llm_service.py:107).
