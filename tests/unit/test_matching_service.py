@@ -5,6 +5,7 @@ from app.services.matching_service import MatchingService
 
 def test_matching_service_returns_ranked_items() -> None:
     embeddings = EmbeddingService()
+    embeddings._provider = "mock"
     service = MatchingService(embeddings)
 
     vacancies = [
@@ -41,6 +42,8 @@ def test_matching_service_returns_ranked_items() -> None:
         role="Backend developer",
         experience="2 years Python",
         education="CS",
+        education_domain="Computer Science",
+        projects="Pet project: HR assistant bot",
         skills="Python, FastAPI, SQL",
         salary_expectation="200000",
         preferred_location="Remote",
@@ -50,4 +53,3 @@ def test_matching_service_returns_ranked_items() -> None:
     recs = service.recommend(profile, index, top_k=2)
     assert len(recs) == 2
     assert recs[0].vacancy_id in {"v1", "v2"}
-

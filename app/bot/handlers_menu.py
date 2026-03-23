@@ -3,7 +3,7 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.api.deps import container
+from app.bot.backend_client import BackendClientError, BackendNotFoundError, get_interview_state
 from app.bot.handlers_actions import perform_match, perform_resume
 from app.bot.handlers_interview import submit_interview_answer
 from app.bot.handlers_start import run_start_interview
@@ -11,12 +11,14 @@ from app.bot.keyboards import BTN_HELP, BTN_MATCH, BTN_NEW_INTERVIEW, BTN_RESUME
 
 HELP_TEXT = (
     "Как пользоваться ботом:\n\n"
-    "1) /start или «Новое интервью» — короткое интервью (8 вопросов).\n"
-    "2) На часть вопросов ответь кнопками (навыки, образование, формат, занятость), остальное — текстом.\n"
-    "3) После завершения:\n"
+    "1) /start или «Новое интервью» — короткое интервью (10 вопросов).\n"
+    "2) На часть вопросов ответь кнопками (навыки, уровень образования, формат, занятость), остальное — текстом.\n"
+    "3) После уровня образования бот отдельно спросит направление / домен образования.\n"
+    "4) Отдельно будет вопрос про проекты, пет-проекты и заметные достижения.\n"
+    "5) После завершения:\n"
     "   • «Резюме» — сгенерировать текст резюме.\n"
     "   • «Подбор вакансий» — топ-5 по базе вакансий проекта.\n"
-    "4) Под каждой вакансией: сопроводительное письмо, skill gaps, 👍/👎, ссылка на вакансию.\n\n"
+    "6) Под каждой вакансией: сопроводительное письмо, skill gaps, 👍/👎, ссылка на вакансию.\n\n"
     "Команды: /resume, /match, /a <ответ>.\n\n"
     "Это AI-помощник: проверяй факты перед откликом."
 )
@@ -29,7 +31,13 @@ async def handle_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not text:
         return
     user_id = int(update.effective_user.id)
-    state = container.session_repo.get_last_session(user_id)
+    try:
+        state = await get_interview_state(user_id)
+    except BackendNotFoundError:
+        state = None
+    except BackendClientError as exc:
+        await update.message.reply_text(exc.user_message)
+        return
 
     if state and not state.completed:
         await submit_interview_answer(update, context, text)

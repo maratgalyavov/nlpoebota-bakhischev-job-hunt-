@@ -3,7 +3,12 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.api.deps import container
+from app.bot.backend_client import (
+    BackendClientError,
+    BackendNotFoundError,
+    answer_interview,
+    get_interview_state,
+)
 from app.bot.interview_keyboards import (
     education_keyboard,
     education_question_caption,
@@ -15,13 +20,13 @@ from app.bot.interview_keyboards import (
     skills_question_caption,
 )
 from app.bot.keyboards import main_menu_reply_keyboard
-from app.domain.models import INTERVIEW_QUESTIONS_RU, InterviewState
+from app.domain.models import INTERVIEW_QUESTIONS_RU
 
 # Индексы вопросов с inline-кнопками
 IX_SKILLS = 1
 IX_EDUCATION = 2
-IX_FORMAT = 5
-IX_EMPLOYMENT = 6
+IX_FORMAT = 7
+IX_EMPLOYMENT = 8
 
 
 def _user_data_map(context: ContextTypes.DEFAULT_TYPE) -> dict:
@@ -98,31 +103,33 @@ async def persist_answer_and_show_next(
     Сохраняет ответ на вопрос q_idx и показывает следующий шаг.
     Возвращает True, если интервью завершено.
     """
-    state = container.session_repo.get_last_session(user_id)
-    if state is None or state.completed:
+    try:
+        state = await get_interview_state(user_id)
+    except BackendNotFoundError:
+        await chat.send_message("Сессия не найдена. Нажми /start или «Новое интервью».")
+        return False
+    except BackendClientError as exc:
+        await chat.send_message(exc.user_message)
+        return False
+
+    if state.completed:
         return False
     if state.question_index != q_idx:
         return False
 
-    container.answer_repo.add_answer(
-        session_id=state.session_id,
-        question_index=q_idx,
-        question_text=INTERVIEW_QUESTIONS_RU[q_idx],
-        answer_text=answer_text,
-    )
+    try:
+        next_state = await answer_interview(user_id=user_id, answer_text=answer_text)
+    except BackendNotFoundError:
+        await chat.send_message("Сессия не найдена. Нажми /start или «Новое интервью».")
+        return False
+    except BackendClientError as exc:
+        await chat.send_message(exc.user_message)
+        return False
+
     if q_idx == IX_SKILLS:
         _reset_skill_draft(context)
-    transition = container.fsm.answer(q_idx)
-    next_state = InterviewState(
-        user_id=user_id,
-        session_id=state.session_id,
-        stage=transition.next_stage,
-        question_index=transition.next_question_index,
-        completed=transition.completed,
-    )
-    container.session_repo.update_session(next_state)
 
-    if transition.completed:
+    if next_state.completed:
         await chat.send_message(
             "🎉 Спасибо! Интервью завершено.\n\n"
             "Дальше — кнопками внизу: резюме, подбор вакансий, письмо и skill gaps под каждой карточкой.",
@@ -133,8 +140,8 @@ async def persist_answer_and_show_next(
     await send_next_question_prompt(
         chat,
         context,
-        transition.next_question_index,
-        transition.ask_question,
+        next_state.question_index,
+        next_state.next_question,
     )
     return False
 
@@ -155,9 +162,13 @@ async def submit_interview_answer(
         await msg.reply_text("Напиши ответ одним сообщением или используй: /a <твой ответ>")
         return
 
-    state = container.session_repo.get_last_session(user_id)
-    if state is None:
+    try:
+        state = await get_interview_state(user_id)
+    except BackendNotFoundError:
         await msg.reply_text("Сессия не найдена. Нажми /start или «Новое интервью».")
+        return
+    except BackendClientError as exc:
+        await msg.reply_text(exc.user_message)
         return
     if state.completed:
         await msg.reply_text("Интервью уже завершено. Используй кнопки меню ниже или команды /resume и /match.")

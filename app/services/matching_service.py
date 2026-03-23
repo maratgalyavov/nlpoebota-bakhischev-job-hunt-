@@ -19,13 +19,13 @@ class MatchingService:
         )
 
     def build_index(self, vacancies: list[Vacancy]) -> FaissIndex:
-        vectors = []
-        ids = []
-        for vacancy in vacancies:
-            vec = self.embedding_service.encode(self._vacancy_to_text(vacancy))
-            vectors.append(vec)
-            ids.append(vacancy.id)
-        matrix = np.vstack(vectors).astype("float32") if vectors else np.zeros((0, 384), dtype="float32")
+        ids = [vacancy.id for vacancy in vacancies]
+        texts = [self._vacancy_to_text(vacancy) for vacancy in vacancies]
+        matrix = (
+            self.embedding_service.encode_many(texts).astype("float32")
+            if texts
+            else np.zeros((0, 384), dtype="float32")
+        )
         dim = int(matrix.shape[1]) if matrix.size else 384
         index = FaissIndex(dim=dim)
         if len(ids) > 0:
@@ -38,7 +38,6 @@ class MatchingService:
         index: FaissIndex,
         top_k: int = 5,
     ) -> list[Recommendation]:
-        profile_vec = self.embedding_service.encode(profile.to_text())
+        profile_vec = self.embedding_service.encode_queries([profile.to_text()])[0]
         results = index.search(profile_vec, top_k=top_k)
         return [Recommendation(vacancy_id=vacancy_id, score=score) for vacancy_id, score in results]
-

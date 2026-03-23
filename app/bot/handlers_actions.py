@@ -5,10 +5,9 @@ from html import escape
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.api.deps import container
+from app.bot.backend_client import BackendClientError, generate_resume, match_vacancies
 from app.bot.keyboards import vacancy_card_keyboard
 from app.bot.text_chunks import chunk_text
-from app.services.explainability import build_explainability
 
 
 async def perform_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -16,23 +15,12 @@ async def perform_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if msg is None or update.effective_user is None:
         return
     user_id = int(update.effective_user.id)
-    session = container.session_repo.get_last_session(user_id)
-    if session is None:
-        await msg.reply_text("Сначала нажми /start или «Новое интервью».")
-        return
-    answers = container.answer_repo.list_answers(session.session_id)
-    if not answers:
-        await msg.reply_text("Сначала ответь на все вопросы интервью — просто сообщениями в чат.")
-        return
-    profile = container.profile_service.from_answers(user_id, answers)
     await msg.reply_text("Генерируем резюме…")
-    resume = container.llm_service.generate_resume(profile.to_text())
-    container.artifact_repo.save_artifact(
-        user_id=user_id,
-        session_id=session.session_id,
-        artifact_type="resume",
-        content=resume,
-    )
+    try:
+        resume = await generate_resume(user_id)
+    except BackendClientError as exc:
+        await msg.reply_text(exc.user_message)
+        return
     for part in chunk_text(resume):
         await msg.reply_text(part)
 
@@ -42,21 +30,16 @@ async def perform_match(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if msg is None or update.effective_user is None:
         return
     user_id = int(update.effective_user.id)
-    session = container.session_repo.get_last_session(user_id)
-    if session is None:
-        await msg.reply_text("Сначала нажми /start или «Новое интервью».")
-        return
-    answers = container.answer_repo.list_answers(session.session_id)
-    if not answers:
-        await msg.reply_text("Сначала пройди интервью — отвечай на вопросы сообщениями в чат.")
-        return
-
-    profile = container.profile_service.from_answers(user_id, answers)
     status_msg = await msg.reply_text("Считаем подборку по базе вакансий…")
-    vacancies = container.vacancy_service.load_vacancies()
-    index = container.matching_service.build_index(vacancies)
-    recs = container.matching_service.recommend(profile, index, top_k=5)
-    by_id = {v.id: v for v in vacancies}
+    try:
+        recs = await match_vacancies(user_id, top_k=5)
+    except BackendClientError as exc:
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await msg.reply_text(exc.user_message)
+        return
 
     try:
         await status_msg.delete()
@@ -71,29 +54,24 @@ async def perform_match(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await msg.reply_text("Топ вакансий — под каждой карточкой кнопки: письмо, skill gaps, отзыв 👍/👎, ссылка.")
     for i, rec in enumerate(recs, start=1):
-        v = by_id.get(rec.vacancy_id)
-        if not v:
-            continue
-        exp = build_explainability(profile, v)
-        reasons = "\n".join(f"• {r}" for r in exp["reasons"])
-        desc = (v.description or "").replace("\n", " ").strip()
-        preview = desc[:400] + ("…" if len(desc) > 400 else "")
+        reasons = "\n".join(f"• {r}" for r in rec.explainability.get("reasons", []))
+        preview = rec.description_preview
         salary = ""
-        if v.salary_from or v.salary_to:
-            salary = f"💰 от {v.salary_from or '—'} до {v.salary_to or '—'} ₽\n"
+        if rec.salary_from or rec.salary_to:
+            salary = f"💰 от {rec.salary_from or '—'} до {rec.salary_to or '—'} ₽\n"
         body = (
-            f"{i}. {escape(v.title)} — {escape(v.company)}\n"
-            f"📍 {escape(v.location or '—')} · совпадение {round(rec.score, 3)}\n"
+            f"{i}. {escape(rec.title)} — {escape(rec.company)}\n"
+            f"📍 {escape(rec.location or '—')} · совпадение {round(rec.score, 3)}\n"
             f"{salary}"
             f"{reasons}\n\n"
             f"Описание: {escape(preview or '—')}\n"
-            f"🔗 <a href=\"{escape(v.url, quote=True)}\">Открыть вакансию</a>"
+            f"🔗 <a href=\"{escape(rec.url, quote=True)}\">Открыть вакансию</a>"
         )
         await msg.reply_text(
             body,
             parse_mode="HTML",
             disable_web_page_preview=True,
-            reply_markup=vacancy_card_keyboard(v.id, v.url),
+            reply_markup=vacancy_card_keyboard(rec.vacancy_id, rec.url),
         )
 
 

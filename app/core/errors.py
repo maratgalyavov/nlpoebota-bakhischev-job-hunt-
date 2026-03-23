@@ -9,3 +9,6 @@ class NotFoundError(AppError):
 class ValidationError(AppError):
     """Domain validation failed."""
 
+
+class ExternalServiceError(AppError):
+    """External provider request failed."""

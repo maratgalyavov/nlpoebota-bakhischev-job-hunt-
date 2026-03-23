@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import container
 from app.api.schemas import FeedbackRequest, VacancyMatchRequest
+from app.core.errors import ExternalServiceError
 from app.services.explainability import build_explainability
 
 router = APIRouter(prefix="/v1", tags=["matching"])
@@ -20,8 +21,11 @@ def match_vacancies(payload: VacancyMatchRequest) -> dict:
 
     profile = container.profile_service.from_answers(payload.user_id, answers)
     vacancies = container.vacancy_service.load_vacancies()
-    index = container.matching_service.build_index(vacancies)
-    recommendations = container.matching_service.recommend(profile, index, top_k=payload.top_k)
+    try:
+        index = container.matching_service.build_index(vacancies)
+        recommendations = container.matching_service.recommend(profile, index, top_k=payload.top_k)
+    except ExternalServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     by_id = {v.id: v for v in vacancies}
     result = []
@@ -29,6 +33,7 @@ def match_vacancies(payload: VacancyMatchRequest) -> dict:
         vacancy = by_id.get(rec.vacancy_id)
         if vacancy is None:
             continue
+        description = (vacancy.description or "").replace("\n", " ").strip()
         result.append(
             {
                 "vacancy_id": vacancy.id,
@@ -37,6 +42,9 @@ def match_vacancies(payload: VacancyMatchRequest) -> dict:
                 "location": vacancy.location,
                 "url": vacancy.url,
                 "score": round(float(rec.score), 4),
+                "salary_from": vacancy.salary_from,
+                "salary_to": vacancy.salary_to,
+                "description_preview": description[:400] + ("…" if len(description) > 400 else ""),
                 "explainability": build_explainability(profile, vacancy),
             }
         )

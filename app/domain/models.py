@@ -8,6 +8,8 @@ INTERVIEW_QUESTIONS_RU = [
     "Подробно расскажи про свой опыт работы (сколько лет / какие позиции / какой вклад)",
     "Какими инструментами и технологиями ты владеешь?",
     "Какое у тебя образование?",
+    "Какое у тебя направление / профиль образования?",
+    "Какие проекты, пет-проекты, кейсы или заметные достижения хочешь добавить в резюме?",
     "Какую роль ты ищешь?",
     "Какая желаемая зарплата (в рублях, от)?",
     "Какой формат работы предпочитаешь (remote / офис / гибрид)?",
@@ -31,6 +33,8 @@ class UserProfile:
     role: str
     experience: str
     education: str
+    education_domain: str
+    projects: str
     skills: str
     salary_expectation: str
     preferred_location: str
@@ -43,6 +47,8 @@ class UserProfile:
             f"Опыт: {self.experience}. "
             f"Навыки: {self.skills}. "
             f"Образование: {self.education}. "
+            f"Профиль образования: {self.education_domain}. "
+            f"Проекты и достижения: {self.projects}. "
             f"Ожидаемая зарплата: {self.salary_expectation}. "
             f"Локация: {self.preferred_location}. "
             f"Занятость: {self.employment_type}. "
@@ -95,4 +101,3 @@ class Vacancy:
 class Recommendation:
     vacancy_id: str
     score: float
-

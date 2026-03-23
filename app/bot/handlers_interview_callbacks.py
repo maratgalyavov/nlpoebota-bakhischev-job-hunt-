@@ -5,7 +5,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.api.deps import container
+from app.bot.backend_client import BackendClientError, BackendNotFoundError, get_interview_state
 from app.bot.handlers_interview import (
     IX_EDUCATION,
     IX_EMPLOYMENT,
@@ -42,8 +42,16 @@ async def handle_interview_callback(update: Update, context: ContextTypes.DEFAUL
     parts = query.data.split(":")
     # iv:sk:t:py | iv:sk:done | iv:ed:bak | iv:fmt:remote | iv:emp:full
 
-    state = container.session_repo.get_last_session(user_id)
-    if state is None or state.completed:
+    try:
+        state = await get_interview_state(user_id)
+    except BackendNotFoundError:
+        await query.answer("Сессия не найдена или интервью уже завершено.", show_alert=True)
+        return
+    except BackendClientError as exc:
+        await query.answer(exc.user_message, show_alert=True)
+        return
+
+    if state.completed:
         await query.answer("Сессия не найдена или интервью уже завершено.", show_alert=True)
         return
 

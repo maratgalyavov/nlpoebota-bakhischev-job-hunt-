@@ -19,12 +19,23 @@ BASE = "https://hh.ru"
 
 DEFAULT_QUERIES = [
     "Python developer",
+    "Python backend developer",
+    "Python engineer",
     "Java developer",
+    "Java backend developer",
+    "Backend developer",
+    "backend engineer",
+    "data engineer",
     "аналитик данных",
+    "data analyst",
     "системный аналитик",
+    "business analyst",
     "QA engineer",
     "тестировщик",
     "DevOps",
+    "SRE",
+    "ML engineer",
+    "data scientist",
 ]
 
 HEADERS = {
@@ -64,6 +75,7 @@ def _normalize_vacancy_url(href: str | None) -> str:
 def parse_search_page(html: str) -> list[ListingItem]:
     soup = BeautifulSoup(html, "lxml")
     out: list[ListingItem] = []
+    seen_ids: set[str] = set()
     cards = soup.select('[data-qa="vacancy-serp__vacancy vacancy-serp-item_clickme"]')
     if not cards:
         cards = soup.select('[data-qa^="vacancy-serp__vacancy"]')
@@ -87,6 +99,9 @@ def parse_search_page(html: str) -> list[ListingItem]:
         vid = url[pos_left:pos_right]
         if not vid.isdigit():
             continue
+        if vid in seen_ids:
+            continue
+        seen_ids.add(vid)
 
         company_el = card.select_one('[data-qa="vacancy-serp__vacancy-employer-text"]')
         company = company_el.get_text(strip=True) if company_el else ""
@@ -100,6 +115,35 @@ def parse_search_page(html: str) -> list[ListingItem]:
                 title=title,
                 company=company,
                 location=location,
+                url=url,
+            )
+        )
+
+    if out:
+        return out
+
+    # Fallback: collect vacancy links even if the card markup changed.
+    for link in soup.select('a[href*="/vacancy/"]'):
+        href = link.get("href")
+        url = _normalize_vacancy_url(href)
+        if not url:
+            continue
+        match = re.search(r"/vacancy/(\d+)", url)
+        if not match:
+            continue
+        vid = match.group(1)
+        if vid in seen_ids:
+            continue
+        seen_ids.add(vid)
+        title = link.get_text(strip=True)
+        if not title:
+            continue
+        out.append(
+            ListingItem(
+                vacancy_id=vid,
+                title=title,
+                company="",
+                location="",
                 url=url,
             )
         )
@@ -254,7 +298,7 @@ def fetch_search(
         "text": text,
         "area": area,
         "page": page,
-        "items_on_page": 20,
+        "items_on_page": 100,
         "ored_clusters": "true",
     }
     # Сначала свежие: publication_time. Период: search_period (дней), 0 — за всё время.

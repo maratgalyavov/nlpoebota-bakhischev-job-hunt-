@@ -4,9 +4,11 @@ import json
 import logging
 from typing import Any, Optional
 
+import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
+from app.core.errors import ExternalServiceError
 from app.domain.prompts import (
     build_cover_letter_prompt,
     build_resume_prompt,
@@ -54,6 +56,9 @@ class LLMService:
         self.model_name = settings.llm_model
         self.use_mock = settings.use_mock_llm
         self.provider = settings.llm_provider
+        self.base_url = settings.llm_base_url.rstrip("/")
+        self.api_key = settings.llm_api_key
+        self.folder_id = settings.yandex_cloud_folder_id
         self.device = self._resolve_device()
         self.max_new_tokens = settings.llm_max_new_tokens
         self.temperature = settings.llm_temperature
@@ -169,6 +174,153 @@ class LLMService:
             ]
         }
 
+    def _model_studio_generate(self, prompt: str) -> Optional[str]:
+        if not self.api_key:
+            raise ExternalServiceError("Model Studio LLM is not configured: LLM_API_KEY is empty.")
+
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self.max_new_tokens,
+            "temperature": self.temperature,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            response = httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:  # pragma: no cover - runtime dependent
+            detail = exc.response.text.strip()
+            logger.error(
+                "Model Studio generation failed: status=%s body=%s",
+                exc.response.status_code,
+                detail[:1000],
+            )
+            raise ExternalServiceError(
+                f"Model Studio LLM request failed with HTTP {exc.response.status_code}. "
+                "Check API key, region/base URL, and workspace permissions."
+            ) from exc
+        except Exception as exc:  # pragma: no cover - runtime dependent
+            logger.exception("Model Studio generation failed: %s", exc)
+            raise ExternalServiceError("Model Studio LLM request failed.") from exc
+
+        try:
+            choices = body.get("choices") or []
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                return content.strip() or None
+            if isinstance(content, list):
+                text_parts = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text = item.get("text")
+                        if isinstance(text, str) and text.strip():
+                            text_parts.append(text.strip())
+                joined = "\n".join(text_parts).strip()
+                return joined or None
+        except Exception as exc:  # pragma: no cover - runtime dependent
+            logger.warning("Unexpected Model Studio response format: %s", exc)
+        raise ExternalServiceError("Model Studio LLM returned an unexpected response format.")
+
+    def _resolve_yandex_model_uri(self) -> str:
+        if self.model_name.startswith("gpt://"):
+            return self.model_name
+        if not self.folder_id:
+            raise ExternalServiceError(
+                "Yandex Cloud LLM is not configured: YANDEX_CLOUD_FOLDER_ID is empty."
+            )
+        return f"gpt://{self.folder_id}/{self.model_name}"
+
+    def _yandex_cloud_generate(self, prompt: str) -> str:
+        if not self.api_key:
+            raise ExternalServiceError("Yandex Cloud LLM is not configured: LLM_API_KEY is empty.")
+
+        payload = {
+            "model": self._resolve_yandex_model_uri(),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            "max_tokens": self.max_new_tokens,
+            "temperature": self.temperature,
+            "stream": False,
+            "response_format": {"type": "json_object"},
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Project": self.folder_id,
+        }
+        try:
+            response = httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            body = response.json()
+            logger.info("Yandex Cloud raw response preview: %s", json.dumps(body, ensure_ascii=False)[:2000])
+        except httpx.HTTPStatusError as exc:  # pragma: no cover - runtime dependent
+            detail = exc.response.text.strip()
+            logger.error(
+                "Yandex Cloud generation failed: status=%s body=%s",
+                exc.response.status_code,
+                detail[:1000],
+            )
+            raise ExternalServiceError(
+                f"Yandex Cloud LLM request failed with HTTP {exc.response.status_code}. "
+                "Check API key scope, folder ID, and model URI."
+            ) from exc
+        except Exception as exc:  # pragma: no cover - runtime dependent
+            logger.exception("Yandex Cloud generation failed: %s", exc)
+            raise ExternalServiceError("Yandex Cloud LLM request failed.") from exc
+
+        try:
+            choices = body.get("choices") or []
+            choice = choices[0] if choices else {}
+            message = choice.get("message") or {}
+            text = message.get("content")
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+            if isinstance(text, list):
+                text_parts = []
+                for item in text:
+                    if isinstance(item, dict):
+                        candidate = item.get("text") or item.get("content")
+                        if isinstance(candidate, str) and candidate.strip():
+                            text_parts.append(candidate.strip())
+                    elif isinstance(item, str) and item.strip():
+                        text_parts.append(item.strip())
+                joined = "\n".join(text_parts).strip()
+                if joined:
+                    return joined
+            reasoning_text = message.get("reasoning_content")
+            if isinstance(reasoning_text, str) and reasoning_text.strip():
+                finish_reason = choice.get("finish_reason")
+                if finish_reason == "length":
+                    raise ExternalServiceError(
+                        "Yandex Cloud response was truncated by max_tokens. "
+                        "Increase LLM_MAX_NEW_TOKENS or switch to a less verbose model."
+                    )
+                return reasoning_text.strip()
+        except Exception as exc:  # pragma: no cover - runtime dependent
+            if isinstance(exc, ExternalServiceError):
+                raise
+            logger.warning("Unexpected Yandex Cloud response format: %s", exc)
+        raise ExternalServiceError("Yandex Cloud LLM returned an unexpected response format.")
+
     @staticmethod
     def _extract_json_candidate(raw_text: str) -> str:
         text = raw_text.strip()
@@ -195,18 +347,28 @@ class LLMService:
             return "; ".join(parts)
         if isinstance(value, dict):
             preferred_order = [
+                "about",
+                "summary",
                 "title",
+                "position",
                 "role",
+                "degree",
                 "company",
                 "organization",
+                "field",
+                "specialization",
+                "institution",
+                "school_name",
+                "duration",
                 "period",
                 "dates",
+                "salary_expectation",
+                "salary",
+                "location",
+                "employment",
                 "description",
                 "result",
                 "details",
-                "school_name",
-                "degree",
-                "specialization",
             ]
             parts = []
             for key in preferred_order:
@@ -238,7 +400,19 @@ class LLMService:
     def _normalize_payload(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
         normalized = dict(payload)
         if mode == "resume":
-            normalized["summary"] = self._to_text(normalized.get("summary"))
+            summary = normalized.get("summary")
+            normalized["summary"] = self._to_text(summary)
+
+            if isinstance(summary, dict):
+                extra_parts = []
+                for key in ("salary_expectation", "salary", "location", "employment"):
+                    text = self._to_text(summary.get(key))
+                    if text:
+                        extra_parts.append(text)
+                if extra_parts:
+                    existing_additional = self._normalize_text_list(normalized.get("additional"))
+                    normalized["additional"] = [*existing_additional, *extra_parts]
+
             for field in ("experience", "skills", "education", "projects", "additional"):
                 normalized[field] = self._normalize_text_list(normalized.get(field))
             return normalized
@@ -345,6 +519,34 @@ class LLMService:
                 except (json.JSONDecodeError, ValidationError) as exc:
                     logger.warning("LLM JSON schema validation failed: %s", exc)
             logger.warning("Falling back to mock LLM output after local_hf failure")
+
+        if self.provider == "model_studio":
+            generated = self._model_studio_generate(prompt_with_schema)
+            try:
+                parsed = json.loads(self._extract_json_candidate(generated))
+                if isinstance(parsed, dict):
+                    return self._validate_contract(parsed, mode)
+                raise ExternalServiceError("Model Studio returned non-dict JSON.")
+            except (json.JSONDecodeError, ValidationError) as exc:
+                raise ExternalServiceError(
+                    "Model Studio returned a response that did not match the expected JSON schema."
+                ) from exc
+
+        if self.provider == "yandex_cloud":
+            generated = self._yandex_cloud_generate(prompt_with_schema)
+            try:
+                parsed = json.loads(self._extract_json_candidate(generated))
+                if isinstance(parsed, dict):
+                    return self._validate_contract(parsed, mode)
+                raise ExternalServiceError("Yandex Cloud returned non-dict JSON.")
+            except (json.JSONDecodeError, ValidationError) as exc:
+                logger.error(
+                    "Yandex Cloud JSON/schema parse failed. Raw response preview: %s",
+                    generated[:2000],
+                )
+                raise ExternalServiceError(
+                    "Yandex Cloud returned a response that did not match the expected JSON schema."
+                ) from exc
 
         # Placeholder for remote provider integration in next iteration.
         return self._validate_contract(self._mock_generate_structured(mode), mode)

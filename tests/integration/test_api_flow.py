@@ -1,12 +1,40 @@
 from __future__ import annotations
 
+import importlib
+
 from fastapi.testclient import TestClient
 
-from app.main import create_app
+import app.api.deps as deps_module
+import app.api.routes_generation as routes_generation_module
+import app.api.routes_interview as routes_interview_module
+import app.api.routes_matching as routes_matching_module
+import app.core.config as config_module
+import app.main as main_module
+import app.services.embedding_service as embedding_service_module
+import app.services.llm_service as llm_service_module
+from app.services.embedding_service import EmbeddingService
+from app.services.llm_service import LLMService
 
 
-def test_interview_to_resume_and_match_flow() -> None:
-    app = create_app()
+def test_interview_to_resume_and_match_flow(monkeypatch) -> None:
+    monkeypatch.setenv("USE_MOCK_LLM", "true")
+    monkeypatch.setenv("USE_MOCK_EMBEDDINGS", "true")
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
+    importlib.reload(config_module)
+    importlib.reload(llm_service_module)
+    importlib.reload(embedding_service_module)
+    importlib.reload(deps_module)
+    importlib.reload(routes_interview_module)
+    importlib.reload(routes_generation_module)
+    importlib.reload(routes_matching_module)
+    importlib.reload(main_module)
+    deps_module.container.llm_service = LLMService()
+    deps_module.container.llm_service.use_mock = True
+    deps_module.container.embedding_service = EmbeddingService()
+    deps_module.container.embedding_service._provider = "mock"
+    deps_module.container.matching_service.embedding_service = deps_module.container.embedding_service
+    app = main_module.create_app()
     client = TestClient(app)
 
     start = client.post(
@@ -19,6 +47,8 @@ def test_interview_to_resume_and_match_flow() -> None:
         "2 года backend разработки",
         "Python, FastAPI, SQL",
         "ВШЭ",
+        "Прикладная информатика",
+        "Пет-проект: карьерный помощник на FastAPI и Telegram Bot",
         "Backend Developer",
         "200000",
         "Remote",
@@ -43,7 +73,7 @@ def test_interview_to_resume_and_match_flow() -> None:
 
 
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:
-    app = create_app()
+    app = main_module.create_app()
     client = TestClient(app)
 
     response = client.get("/metrics")

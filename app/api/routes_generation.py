@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import container
 from app.api.schemas import CoverLetterRequest, ResumeGenerateRequest, SkillGapsRequest
+from app.core.errors import ExternalServiceError
 
 router = APIRouter(prefix="/v1/generate", tags=["generation"])
 
@@ -22,7 +23,10 @@ def _get_profile_text(user_id: int) -> tuple[int, str]:
 @router.post("/resume")
 def generate_resume(payload: ResumeGenerateRequest) -> dict:
     session_id, profile_text = _get_profile_text(payload.user_id)
-    resume = container.llm_service.generate_resume(profile_text)
+    try:
+        resume = container.llm_service.generate_resume(profile_text)
+    except ExternalServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     container.artifact_repo.save_artifact(
         user_id=payload.user_id,
         session_id=session_id,
@@ -39,7 +43,10 @@ def generate_cover_letter(payload: CoverLetterRequest) -> dict:
     if selected is None:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     vacancy_text = f"{selected.title}. {selected.company}. {selected.description}"
-    cover = container.llm_service.generate_cover_letter(profile_text, vacancy_text)
+    try:
+        cover = container.llm_service.generate_cover_letter(profile_text, vacancy_text)
+    except ExternalServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     container.artifact_repo.save_artifact(
         user_id=payload.user_id,
         session_id=session_id,
@@ -57,7 +64,10 @@ def generate_skill_gaps(payload: SkillGapsRequest) -> dict:
     if selected is None:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     vacancy_text = f"{selected.title}. {selected.company}. {selected.description}"
-    gaps = container.llm_service.generate_skill_gaps(profile_text, vacancy_text)
+    try:
+        gaps = container.llm_service.generate_skill_gaps(profile_text, vacancy_text)
+    except ExternalServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     container.artifact_repo.save_artifact(
         user_id=payload.user_id,
         session_id=session_id,
@@ -66,4 +76,3 @@ def generate_skill_gaps(payload: SkillGapsRequest) -> dict:
         meta_json=f'{{"vacancy_id":"{selected.id}"}}',
     )
     return {"skill_gaps": gaps}
-

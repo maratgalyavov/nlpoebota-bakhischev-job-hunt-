@@ -3,7 +3,12 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.api.deps import container
+from app.bot.backend_client import (
+    BackendClientError,
+    add_feedback,
+    generate_cover_letter,
+    generate_skill_gaps,
+)
 from app.bot.text_chunks import chunk_text
 
 
@@ -41,30 +46,12 @@ async def _send_cover_letter(update: Update, user_id: int, vacancy_id: str) -> N
     chat = _target_chat(update)
     if chat is None:
         return
-    session = container.session_repo.get_last_session(user_id)
-    if session is None:
-        await chat.send_message("Сначала нажми /start.")
-        return
-    answers = container.answer_repo.list_answers(session.session_id)
-    if not answers:
-        await chat.send_message("Сначала пройди интервью.")
-        return
-    vac = container.vacancy_service.get_vacancy(vacancy_id)
-    if vac is None:
-        await chat.send_message("Вакансия не найдена (возможно, снята с публикации).")
-        return
-    profile = container.profile_service.from_answers(user_id, answers)
-    profile_text = profile.to_text()
-    vacancy_text = f"{vac.title}. {vac.company}. {vac.description}"
     await chat.send_message("Пишем сопроводительное письмо…")
-    cover = container.llm_service.generate_cover_letter(profile_text, vacancy_text)
-    container.artifact_repo.save_artifact(
-        user_id=user_id,
-        session_id=session.session_id,
-        artifact_type="cover_letter",
-        content=cover,
-        meta_json=f'{{"vacancy_id":"{vac.id}"}}',
-    )
+    try:
+        cover = await generate_cover_letter(user_id, vacancy_id)
+    except BackendClientError as exc:
+        await chat.send_message(exc.user_message)
+        return
     for part in chunk_text(cover):
         await chat.send_message(part)
 
@@ -73,30 +60,12 @@ async def _send_skill_gaps(update: Update, user_id: int, vacancy_id: str) -> Non
     chat = _target_chat(update)
     if chat is None:
         return
-    session = container.session_repo.get_last_session(user_id)
-    if session is None:
-        await chat.send_message("Сначала нажми /start.")
-        return
-    answers = container.answer_repo.list_answers(session.session_id)
-    if not answers:
-        await chat.send_message("Сначала пройди интервью.")
-        return
-    vac = container.vacancy_service.get_vacancy(vacancy_id)
-    if vac is None:
-        await chat.send_message("Вакансия не найдена.")
-        return
-    profile = container.profile_service.from_answers(user_id, answers)
-    profile_text = profile.to_text()
-    vacancy_text = f"{vac.title}. {vac.company}. {vac.description}"
     await chat.send_message("Считаем пробелы в навыках…")
-    gaps = container.llm_service.generate_skill_gaps(profile_text, vacancy_text)
-    container.artifact_repo.save_artifact(
-        user_id=user_id,
-        session_id=session.session_id,
-        artifact_type="skill_gaps",
-        content=gaps,
-        meta_json=f'{{"vacancy_id":"{vac.id}"}}',
-    )
+    try:
+        gaps = await generate_skill_gaps(user_id, vacancy_id)
+    except BackendClientError as exc:
+        await chat.send_message(exc.user_message)
+        return
     for part in chunk_text(gaps):
         await chat.send_message(part)
 
@@ -105,16 +74,16 @@ async def _record_feedback(update: Update, user_id: int, vacancy_id: str, positi
     chat = _target_chat(update)
     if chat is None:
         return
-    session = container.session_repo.get_last_session(user_id)
-    if session is None:
-        await chat.send_message("Сначала нажми /start.")
+    try:
+        await add_feedback(
+            user_id=user_id,
+            session_id=None,
+            item_type="vacancy_match",
+            item_id=vacancy_id,
+            is_positive=positive,
+            comment=None,
+        )
+    except BackendClientError as exc:
+        await chat.send_message(exc.user_message)
         return
-    container.feedback_repo.add_feedback(
-        user_id=user_id,
-        session_id=session.session_id,
-        item_type="vacancy_match",
-        item_id=vacancy_id,
-        is_positive=positive,
-        comment=None,
-    )
     await chat.send_message("Спасибо за отклик — это поможет улучшить подборку.")

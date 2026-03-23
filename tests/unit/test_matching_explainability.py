@@ -8,6 +8,8 @@ def test_build_explainability_contains_skills_and_reasons() -> None:
         role="Python Developer",
         experience="2 years",
         education="CS",
+        education_domain="Computer Science",
+        projects="Pet project: backend API",
         skills="Python, FastAPI, SQL",
         salary_expectation="200000",
         preferred_location="Remote",
@@ -32,4 +34,3 @@ def test_build_explainability_contains_skills_and_reasons() -> None:
     assert "reasons" in payload
     assert "matched_skills" in payload
     assert "python" in payload["matched_skills"]
-

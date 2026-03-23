@@ -29,10 +29,21 @@ class VacancyService:
             cursor = conn.cursor()
             for vac in vacancies:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO vacancies "
+                    "INSERT INTO vacancies "
                     "(vacancy_id, title, company, location, url, description, "
                     "salary_from, salary_to, posted_date, skills, active_flg) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(vacancy_id) DO UPDATE SET "
+                    "title=excluded.title, "
+                    "company=excluded.company, "
+                    "location=excluded.location, "
+                    "url=excluded.url, "
+                    "description=excluded.description, "
+                    "salary_from=excluded.salary_from, "
+                    "salary_to=excluded.salary_to, "
+                    "posted_date=excluded.posted_date, "
+                    "skills=excluded.skills, "
+                    "active_flg=excluded.active_flg",
                     (
                         vac["id"],
                         vac["title"],
