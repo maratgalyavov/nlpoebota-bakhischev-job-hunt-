@@ -1,5 +1,5 @@
-from app.api.routes_matching import _build_explainability
 from app.domain.models import UserProfile, Vacancy
+from app.services.explainability import build_explainability
 
 
 def test_build_explainability_contains_skills_and_reasons() -> None:
@@ -28,7 +28,7 @@ def test_build_explainability_contains_skills_and_reasons() -> None:
         active_flg=True,
     )
 
-    payload = _build_explainability(profile, vacancy)
+    payload = build_explainability(profile, vacancy)
     assert "reasons" in payload
     assert "matched_skills" in payload
     assert "python" in payload["matched_skills"]

@@ -6,8 +6,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from project root if present.
-load_dotenv(dotenv_path=Path(".env"), override=False)
+# До getenv: один раз подхватываем .env из корня репозитория (не зависит от cwd).
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(_REPO_ROOT / ".env")
 
 
 @dataclass(frozen=True)

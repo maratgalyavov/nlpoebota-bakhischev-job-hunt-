@@ -35,8 +35,7 @@ def generate_resume(payload: ResumeGenerateRequest) -> dict:
 @router.post("/cover-letter")
 def generate_cover_letter(payload: CoverLetterRequest) -> dict:
     session_id, profile_text = _get_profile_text(payload.user_id)
-    vacancies = container.vacancy_service.load_vacancies()
-    selected = next((v for v in vacancies if v.id == payload.vacancy_id), None)
+    selected = container.vacancy_service.get_vacancy(payload.vacancy_id)
     if selected is None:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     vacancy_text = f"{selected.title}. {selected.company}. {selected.description}"
@@ -54,8 +53,7 @@ def generate_cover_letter(payload: CoverLetterRequest) -> dict:
 @router.post("/skill-gaps")
 def generate_skill_gaps(payload: SkillGapsRequest) -> dict:
     session_id, profile_text = _get_profile_text(payload.user_id)
-    vacancies = container.vacancy_service.load_vacancies()
-    selected = next((v for v in vacancies if v.id == payload.vacancy_id), None)
+    selected = container.vacancy_service.get_vacancy(payload.vacancy_id)
     if selected is None:
         raise HTTPException(status_code=404, detail="Vacancy not found")
     vacancy_text = f"{selected.title}. {selected.company}. {selected.description}"
