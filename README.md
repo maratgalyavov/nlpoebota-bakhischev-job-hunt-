@@ -1,65 +1,83 @@
 # HR Career Assistant (MVP)
 
-Implementation based on [`design_doc.md`](design_doc.md) and backend-first plan in [`plans/mvp_implementation_plan.md`](plans/mvp_implementation_plan.md).
+Implementation based on [`design_doc.md`](design_doc.md).
 
 ## What is implemented
 
-- FastAPI backend with interview, generation, matching, feedback, and health routes
-- SQLite persistence for users, sessions, interview answers, artifacts, and feedback
-- Mock LLM generation service (resume / cover letter / skill gaps)
-- Embedding service with deterministic mock mode and FAISS-based matching
-- Mock vacancies dataset and index build script
-- Telegram bot handlers for `/start`, `/a`, `/resume`, `/match`
-- Unit + integration tests
+- Telegram bot commands: `/start`, `/a`, `/resume`, `/match`
+- FastAPI backend: interview, generation, matching, parser, feedback, health, metrics
+- SQLite persistence for users/sessions/answers/artifacts/feedback/vacancies
+- FAISS matching with embeddings
+- LLM generation with structured contracts and fallback behavior
+- Monitoring with Prometheus + Grafana
 
-## Quick start (local)
+## Quick start (Docker-first, recommended)
 
-1. Create env file:
+### 1) Prepare env
 
 ```bash
 cp .env.example .env
 ```
 
-2. Install dependencies:
+Set required values in [`.env`](.env):
 
 ```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+USE_MOCK_LLM=false
+LLM_PROVIDER=local_hf
+LLM_MODEL=Qwen/Qwen2.5-1.5B-Instruct
+LLM_DEVICE=auto
+USE_MOCK_EMBEDDINGS=false
+EMBEDDING_DEVICE=auto
+PRELOAD_MODELS_ON_STARTUP=true
+```
+
+`PRELOAD_MODELS_ON_STARTUP=true` pre-downloads/loads models on process startup so first bot/API calls are fast.
+
+### 2) Run bot + backend
+
+```bash
+docker compose up --build bot backend
+```
+
+Services:
+- Bot container command: [`python -m app.bot.telegram_app`](docker-compose.yml:11)
+- Backend container command: [`python -m uvicorn app.main:app ...`](docker-compose.yml:23)
+
+### 3) Optional monitoring stack
+
+```bash
+docker compose up --build bot backend prometheus grafana
+```
+
+Endpoints:
+- API: `http://127.0.0.1:8000`
+- Prometheus: `http://127.0.0.1:9090`
+- Grafana: `http://127.0.0.1:3000` (`admin/admin`)
+- Metrics endpoint: [`/metrics`](app/observability/metrics.py:24)
+- Dashboard file: [`monitoring/grafana/dashboards/hr-assistant-overview.json`](monitoring/grafana/dashboards/hr-assistant-overview.json)
+
+### 4) Logs and control
+
+```bash
+docker compose logs -f bot
+docker compose logs -f backend
+docker compose down
+```
+
+## Python local run (secondary)
+
+Use this if you explicitly need local non-Docker execution.
+
+```bash
+cp .env.example .env
 python3 -m pip install -r requirements.txt
-```
-
-3. Run tests:
-
-```bash
-python3 -m pytest -q
-```
-
-Optional quality checks:
-
-```bash
-python3 -m ruff check .
-python3 -m mypy app
-```
-
-4. Build FAISS index from mock vacancies:
-
-```bash
 python3 scripts/build_index.py
-```
-
-5. Start API:
-
-```bash
 python3 -m uvicorn app.main:app --reload
-```
-
-Health check:
-
-```bash
-curl http://127.0.0.1:8000/healthz
+python3 -m app.bot.telegram_app
 ```
 
 ## API examples
-
-Start interview:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/interview/start \
@@ -67,15 +85,11 @@ curl -X POST http://127.0.0.1:8000/v1/interview/start \
   -d '{"user_id": 1, "telegram_username": "demo"}'
 ```
 
-Answer question:
-
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/interview/answer \
   -H "Content-Type: application/json" \
   -d '{"user_id": 1, "answer_text": "Мой ответ"}'
 ```
-
-Generate resume:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/generate/resume \
@@ -83,99 +97,52 @@ curl -X POST http://127.0.0.1:8000/v1/generate/resume \
   -d '{"user_id": 1}'
 ```
 
-Match vacancies:
-
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/match/vacancies \
   -H "Content-Type: application/json" \
   -d '{"user_id": 1, "top_k": 5}'
 ```
 
-Response now includes explainability per vacancy (`matched_skills`, `reasons`, `missing_skills_preview`) from [`/v1/match/vacancies`](app/api/routes_matching.py:45).
+Matching response includes explainability fields from [`/v1/match/vacancies`](app/api/routes_matching.py:45):
+- `matched_skills`
+- `reasons`
+- `missing_skills_preview`
 
-## Docker
+## HH parser integration
+
+Components:
+- Parser core: [`app/storage/hh_parser.py`](app/storage/hh_parser.py)
+- Service: [`ParserService`](app/services/parser_service.py:20)
+- Persistence: [`VacancyService.save_vacancies()`](app/services/vacancy_service.py:26)
+- API routes:
+  - [`POST /v1/parser/run`](app/api/routes_parser.py:11)
+  - [`POST /v1/parser/daily-update`](app/api/routes_parser.py:16)
+
+Run parser manually:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+curl -X POST http://127.0.0.1:8000/v1/parser/run
+curl -X POST http://127.0.0.1:8000/v1/parser/daily-update
 ```
 
-API: `http://127.0.0.1:8000`
+Then rebuild index:
 
-Monitoring stack:
-- Prometheus: `http://127.0.0.1:9090`
-- Grafana: `http://127.0.0.1:3000` (admin/admin)
-- Dashboard file: [`monitoring/grafana/dashboards/hr-assistant-overview.json`](monitoring/grafana/dashboards/hr-assistant-overview.json)
+```bash
+python3 scripts/build_index.py
+```
+
+## Quality checks
+
+```bash
+python3 -m pytest -q
+python3 -m ruff check .
+python3 -m mypy app
+```
+
+CI workflow: [`CI`](.github/workflows/ci.yml:1).
 
 ## Notes
 
-- Current environment uses Python 3.9; code and type hints were adapted for compatibility.
-- For real production-like LLM and embeddings, disable mock flags in [`.env.example`](.env.example) and integrate actual providers in [`app/services/llm_service.py`](app/services/llm_service.py) and [`app/services/embedding_service.py`](app/services/embedding_service.py).
-
-## Testing guide (RU)
-
-Базовый запуск всех тестов:
-
-```bash
-python3 -m pytest -q
-```
-
-Запуск только unit-тестов:
-
-```bash
-python3 -m pytest tests/unit -q
-```
-
-Запуск только интеграционных тестов:
-
-```bash
-python3 -m pytest tests/integration -q
-```
-
-Проверки качества кода перед пушем:
-
-```bash
-python3 -m ruff check .
-python3 -m mypy app
-python3 -m pytest -q
-```
-
-CI запускается через workflow [`CI`](.github/workflows/ci.yml:1) на push/pull request в `main`.
-
-## Run a small local Qwen on Apple Silicon (MPS)
-
-The app now supports a local HuggingFace backend in [`LLMService._local_hf_generate()`](app/services/llm_service.py:67).
-
-Recommended models:
-- For 16GB RAM device: `Qwen/Qwen2.5-0.5B-Instruct`
-- For 48GB RAM device: `Qwen/Qwen2.5-1.5B-Instruct` (you can also try `Qwen/Qwen2.5-3B-Instruct`)
-
-Set these values in [`.env`](.env):
-
-```bash
-USE_MOCK_LLM=false
-LLM_PROVIDER=local_hf
-LLM_MODEL=Qwen/Qwen2.5-1.5B-Instruct
-LLM_DEVICE=auto
-LLM_MAX_NEW_TOKENS=384
-LLM_TEMPERATURE=0.2
-```
-
-Then run API normally:
-
-```bash
-python3 -m uvicorn app.main:app --reload
-```
-
-Behavior details:
-- Device auto-detection is in [`LLMService._resolve_device()`](app/services/llm_service.py:30) and prefers MPS on macOS.
-- If local model load/generation fails, app falls back to mock output in [`LLMService._generate()`](app/services/llm_service.py:196).
-
-## LLM structured output contracts
-
-LLM responses are validated against internal JSON contracts in [`LLMService._validate_contract()`](app/services/llm_service.py:129):
-- [`ResumeContract`](app/services/llm_service.py:25)
-- [`CoverLetterContract`](app/services/llm_service.py:34)
-- [`SkillGapsContract`](app/services/llm_service.py:46)
-
-This keeps generation deterministic and parse-safe even for local models.
+- Runtime configuration lives in [`.env`](.env) and [`.env.example`](.env.example).
+- App settings are read in [`Settings`](app/core/config.py:14).
+- Dependency wiring and startup warmup are in [`build_container()`](app/api/deps.py:38).

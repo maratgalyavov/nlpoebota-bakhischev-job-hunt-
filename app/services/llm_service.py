@@ -95,6 +95,12 @@ class LLMService:
             self._tokenizer = None
             return False
 
+    def warmup(self) -> None:
+        if self.use_mock:
+            return
+        if self.provider == "local_hf":
+            self._ensure_local_model()
+
     def _local_hf_generate(self, prompt: str) -> Optional[str]:
         if not self._ensure_local_model():
             return None
@@ -175,7 +181,103 @@ class LLMService:
                 text = text.strip()
         return text
 
+    @staticmethod
+    def _to_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            parts = [LLMService._to_text(item) for item in value]
+            parts = [p for p in parts if p]
+            return "; ".join(parts)
+        if isinstance(value, dict):
+            preferred_order = [
+                "title",
+                "role",
+                "company",
+                "organization",
+                "period",
+                "dates",
+                "description",
+                "result",
+                "details",
+                "school_name",
+                "degree",
+                "specialization",
+            ]
+            parts = []
+            for key in preferred_order:
+                if key in value:
+                    text = LLMService._to_text(value.get(key))
+                    if text:
+                        parts.append(text)
+            if not parts:
+                for raw in value.values():
+                    text = LLMService._to_text(raw)
+                    if text:
+                        parts.append(text)
+            return " — ".join(parts)
+        return str(value)
+
+    @staticmethod
+    def _normalize_text_list(raw: Any) -> list[str]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raw = [raw]
+        result: list[str] = []
+        for item in raw:
+            text = LLMService._to_text(item).strip()
+            if text:
+                result.append(text)
+        return result
+
+    def _normalize_payload(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
+        normalized = dict(payload)
+        if mode == "resume":
+            normalized["summary"] = self._to_text(normalized.get("summary"))
+            for field in ("experience", "skills", "education", "projects", "additional"):
+                normalized[field] = self._normalize_text_list(normalized.get(field))
+            return normalized
+        if mode == "cover":
+            normalized["greeting"] = self._to_text(normalized.get("greeting"))
+            normalized["body"] = self._normalize_text_list(normalized.get("body"))
+            normalized["closing"] = self._to_text(normalized.get("closing"))
+            return normalized
+        if mode == "gaps":
+            gaps = normalized.get("gaps")
+            if not isinstance(gaps, list):
+                gaps = [gaps] if gaps else []
+            normalized_gaps = []
+            for item in gaps:
+                if isinstance(item, dict):
+                    normalized_gaps.append(
+                        {
+                            "skill": self._to_text(item.get("skill") or item.get("name")),
+                            "priority": self._to_text(item.get("priority") or item.get("level")),
+                            "recommendation": self._to_text(
+                                item.get("recommendation") or item.get("action")
+                            ),
+                        }
+                    )
+                else:
+                    text = self._to_text(item)
+                    normalized_gaps.append(
+                        {
+                            "skill": text,
+                            "priority": "medium",
+                            "recommendation": "Уточнить план развития по этому навыку.",
+                        }
+                    )
+            normalized["gaps"] = normalized_gaps
+            return normalized
+        return normalized
+
     def _validate_contract(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
+        payload = self._normalize_payload(payload, mode)
         if mode == "resume":
             return ResumeContract.model_validate(payload).model_dump()
         if mode == "cover":

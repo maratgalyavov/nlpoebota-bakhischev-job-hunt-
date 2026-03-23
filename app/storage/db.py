@@ -51,12 +51,25 @@ CREATE TABLE IF NOT EXISTS feedback (
     comment TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
-"""
 
+CREATE TABLE IF NOT EXISTS vacancies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vacancy_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    salary_from INTEGER,
+    salary_to INTEGER,
+    posted_date TEXT NOT NULL,
+    skills TEXT NOT NULL DEFAULT '[]',
+    active_flg INTEGER NOT NULL DEFAULT 1
+);
+"""
 
 def ensure_parent_dir(sqlite_path: str) -> None:
     Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-
 
 def get_connection(sqlite_path: str) -> sqlite3.Connection:
     ensure_parent_dir(sqlite_path)
@@ -64,9 +77,7 @@ def get_connection(sqlite_path: str) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     return connection
 
-
 def init_db(sqlite_path: str) -> None:
     with get_connection(sqlite_path) as connection:
         connection.executescript(SCHEMA_SQL)
         connection.commit()
-

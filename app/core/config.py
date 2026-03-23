@@ -28,12 +28,13 @@ class Settings:
     embedding_model: str = getenv(
         "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
     )
+    embedding_device: str = getenv("EMBEDDING_DEVICE", "auto")
     sqlite_path: str = getenv("SQLITE_PATH", "data/app.db")
     faiss_index_path: str = getenv("FAISS_INDEX_PATH", "data/faiss/vacancies.index")
-    vacancies_path: str = getenv("VACANCIES_PATH", "data/mock_vacancies.json")
 
     use_mock_llm: bool = getenv("USE_MOCK_LLM", "true").lower() == "true"
     use_mock_embeddings: bool = getenv("USE_MOCK_EMBEDDINGS", "true").lower() == "true"
+    preload_models_on_startup: bool = getenv("PRELOAD_MODELS_ON_STARTUP", "true").lower() == "true"
 
 
 settings = Settings()

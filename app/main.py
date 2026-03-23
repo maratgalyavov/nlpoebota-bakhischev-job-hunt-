@@ -6,6 +6,7 @@ from app.api.routes_generation import router as generation_router
 from app.api.routes_health import router as health_router
 from app.api.routes_interview import router as interview_router
 from app.api.routes_matching import router as matching_router
+from app.api.routes_parser import router as parser_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.observability.metrics import metrics_middleware
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
     app.include_router(interview_router)
     app.include_router(generation_router)
     app.include_router(matching_router)
+    app.include_router(parser_router)
     return app
 
 

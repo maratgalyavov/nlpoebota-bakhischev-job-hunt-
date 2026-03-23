@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,14 +66,24 @@ class Vacancy:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Vacancy":
+        raw_skills = payload.get("skills", [])
+        if isinstance(raw_skills, str):
+            try:
+                parsed = json.loads(raw_skills) if raw_skills else []
+            except json.JSONDecodeError:
+                parsed = []
+            skills = [str(s) for s in parsed] if isinstance(parsed, list) else []
+        else:
+            skills = [str(s) for s in (raw_skills or [])]
+
         return cls(
             id=str(payload["id"]),
             title=payload["title"],
             company=payload["company"],
             description=payload["description"],
-            skills=payload.get("skills", []),
-            salary_from=int(payload.get("salary_from", 0)),
-            salary_to=int(payload.get("salary_to", 0)),
+            skills=skills,
+            salary_from=payload.get("salary_from", 0) or 0,
+            salary_to=payload.get("salary_to", 0) or 0,
             location=payload.get("location", ""),
             url=payload.get("url", ""),
             posted_date=payload.get("posted_date", ""),

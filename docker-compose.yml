@@ -1,6 +1,16 @@
 version: "3.9"
 
 services:
+  bot:
+    build: .
+    container_name: hr-career-assistant-bot
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "app.bot.telegram_app"]
+    restart: unless-stopped
+
   backend:
     build: .
     container_name: hr-career-assistant-backend
@@ -11,6 +21,7 @@ services:
     volumes:
       - ./data:/app/data
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.54.1
